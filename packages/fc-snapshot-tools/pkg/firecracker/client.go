@@ -12,8 +12,36 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
+	"unsafe"
 )
+
+const afVsock = 40
+
+type rawSockaddrVM struct {
+	family    uint16
+	reserved1 uint16
+	port      uint32
+	cid       uint32
+	flags     uint8
+	zero      [3]uint8
+}
+
+type sockaddrVM struct {
+	cid   uint32
+	port  uint32
+	flags uint8
+	raw   rawSockaddrVM
+}
+
+func (sa *sockaddrVM) ptr() unsafe.Pointer {
+	sa.raw.family = afVsock
+	sa.raw.cid = sa.cid
+	sa.raw.port = sa.port
+	sa.raw.flags = sa.flags
+	return unsafe.Pointer(&sa.raw)
+}
 
 // Client represents a Firecracker API client
 type Client struct {
@@ -217,6 +245,30 @@ func (c *Client) WaitForVSockHandshake(ctx context.Context) error {
 
 // defaultHandshake polls the guest agent ready endpoint until it reports ready.
 func (c *Client) defaultHandshake(ctx context.Context) error {
+	const (
+		guestCID  = 3
+		guestPort = 5005
+	)
+	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		fd, err := syscall.Socket(afVsock, syscall.SOCK_STREAM, 0)
+		if err != nil {
+			return nil, err
+		}
+		sa := &sockaddrVM{cid: guestCID, port: guestPort}
+		_, _, errno := syscall.RawSyscall(syscall.SYS_CONNECT, uintptr(fd), uintptr(sa.ptr()), unsafe.Sizeof(sa.raw))
+		if errno != 0 {
+			syscall.Close(fd)
+			return nil, errno
+		}
+		f := os.NewFile(uintptr(fd), "vsock")
+		conn, err := net.FileConn(f)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		return conn, nil
+	}
+	client := &http.Client{Transport: &http.Transport{DialContext: dial}}
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -224,11 +276,13 @@ func (c *Client) defaultHandshake(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			status, err := c.apiGet(ctx, "/guest-agent/ready")
+			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://vsock/ready", nil)
+			resp, err := client.Do(req)
 			if err != nil {
 				continue
 			}
-			if status == http.StatusOK {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
 				return nil
 			}
 		}

@@ -61,7 +61,8 @@ func TestBootMicroVMFromSnapshot(t *testing.T) {
 	}
 
 	client, err := fcclient.NewClient("", "", vmID, socket,
-		fcclient.WithStartFunc(func(context.Context) error { return nil }))
+		fcclient.WithStartFunc(func(context.Context) error { return nil }),
+		fcclient.WithHandshakeFunc(func(context.Context) error { return nil }))
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
