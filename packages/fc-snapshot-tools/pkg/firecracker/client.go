@@ -23,6 +23,10 @@ type Client struct {
 	vmID       string
 	cmd        *exec.Cmd
 	httpClient *http.Client
+	baseURL    string
+
+	startFn     func(context.Context) error
+	handshakeFn func(context.Context) error
 }
 
 // VMConfig represents the configuration for a Firecracker VM
@@ -53,13 +57,37 @@ type NetworkInterface struct {
 
 // SnapshotConfig represents the configuration for creating a snapshot
 type SnapshotConfig struct {
-	MemFilePath    string
+	MemFilePath     string
 	VMStateFilePath string
 	ConfigFilePath  string
 }
 
 // NewClient creates a new Firecracker client
-func NewClient(fcBin, jailerBin, vmID, socketPath string) (*Client, error) {
+// ClientOption configures optional settings for Client.
+type ClientOption func(*Client)
+
+// WithHTTPClient sets a custom HTTP client for API communication.
+func WithHTTPClient(hc *http.Client) ClientOption {
+	return func(c *Client) { c.httpClient = hc }
+}
+
+// WithBaseURL overrides the default API base URL.
+func WithBaseURL(url string) ClientOption {
+	return func(c *Client) { c.baseURL = url }
+}
+
+// WithStartFunc overrides the function used to launch the Firecracker process.
+func WithStartFunc(fn func(context.Context) error) ClientOption {
+	return func(c *Client) { c.startFn = fn }
+}
+
+// WithHandshakeFunc overrides the vsock handshake check function.
+func WithHandshakeFunc(fn func(context.Context) error) ClientOption {
+	return func(c *Client) { c.handshakeFn = fn }
+}
+
+// NewClient creates a new Firecracker client
+func NewClient(fcBin, jailerBin, vmID, socketPath string, opts ...ClientOption) (*Client, error) {
 	if socketPath == "" {
 		// Generate a unique socket path if not provided
 		tmpDir, err := os.MkdirTemp("", "fc-socket-*")
@@ -69,11 +97,12 @@ func NewClient(fcBin, jailerBin, vmID, socketPath string) (*Client, error) {
 		socketPath = filepath.Join(tmpDir, "firecracker.sock")
 	}
 
-	return &Client{
+	c := &Client{
 		socketPath: socketPath,
 		fcBin:      fcBin,
 		jailerBin:  jailerBin,
 		vmID:       vmID,
+		baseURL:    "http://localhost",
 		httpClient: &http.Client{
 			Transport: &http.Transport{
 				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
@@ -81,7 +110,17 @@ func NewClient(fcBin, jailerBin, vmID, socketPath string) (*Client, error) {
 				},
 			},
 		},
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	if c.handshakeFn == nil {
+		c.handshakeFn = c.defaultHandshake
+	}
+	if c.startFn == nil {
+		c.startFn = c.defaultStart
+	}
+	return c, nil
 }
 
 // StartVM starts a Firecracker VM with the given configuration
@@ -106,33 +145,7 @@ func (c *Client) StartVM(ctx context.Context, config VMConfig) error {
 
 // startFirecracker starts the Firecracker process with jailer
 func (c *Client) startFirecracker(ctx context.Context) error {
-	// Create jailer command
-	c.cmd = exec.CommandContext(
-		ctx,
-		c.jailerBin,
-		"--id", c.vmID,
-		"--exec-file", c.fcBin,
-		"--uid", "0", // Run as root for simplicity, in production use non-root
-		"--gid", "0",
-		"--chroot-base-dir", "/tmp",
-		"--",
-		"--api-sock", c.socketPath,
-	)
-
-	// Start the process
-	if err := c.cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start Firecracker process: %w", err)
-	}
-
-	// Wait for the socket to be available
-	for i := 0; i < 10; i++ {
-		if _, err := os.Stat(c.socketPath); err == nil {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	return fmt.Errorf("timed out waiting for Firecracker socket")
+	return c.startFn(ctx)
 }
 
 // configureVM configures the VM through the Firecracker API
@@ -148,10 +161,10 @@ func (c *Client) configureVM(ctx context.Context, config VMConfig) error {
 
 	// Configure root drive
 	drive := map[string]any{
-		"drive_id":      "rootfs",
-		"path_on_host":  config.RootDrive.PathOnHost,
+		"drive_id":       "rootfs",
+		"path_on_host":   config.RootDrive.PathOnHost,
 		"is_root_device": config.RootDrive.IsRootDevice,
-		"is_read_only":  config.RootDrive.IsReadOnly,
+		"is_read_only":   config.RootDrive.IsReadOnly,
 	}
 	if err := c.apiPut(ctx, "/drives/rootfs", drive); err != nil {
 		return fmt.Errorf("failed to configure root drive: %w", err)
@@ -159,7 +172,7 @@ func (c *Client) configureVM(ctx context.Context, config VMConfig) error {
 
 	// Configure machine
 	machine := map[string]any{
-		"vcpu_count":  config.VCPUCount,
+		"vcpu_count":   config.VCPUCount,
 		"mem_size_mib": config.MemSizeMB,
 	}
 	if err := c.apiPut(ctx, "/machine-config", machine); err != nil {
@@ -170,9 +183,9 @@ func (c *Client) configureVM(ctx context.Context, config VMConfig) error {
 	for i, netIf := range config.NetworkInterfaces {
 		ifID := fmt.Sprintf("eth%d", i)
 		netConfig := map[string]any{
-			"iface_id":     ifID,
+			"iface_id":      ifID,
 			"host_dev_name": netIf.HostDevName,
-			"guest_mac":    netIf.MacAddress,
+			"guest_mac":     netIf.MacAddress,
 		}
 		if err := c.apiPut(ctx, fmt.Sprintf("/network-interfaces/%s", ifID), netConfig); err != nil {
 			return fmt.Errorf("failed to configure network interface %s: %w", ifID, err)
@@ -192,23 +205,70 @@ func (c *Client) startInstance(ctx context.Context) error {
 
 // WaitForVSockHandshake waits for the vsock handshake to complete
 func (c *Client) WaitForVSockHandshake(ctx context.Context) error {
-	// In a real implementation, this would wait for a vsock connection
-	// For now, we'll just wait a fixed amount of time
-	select {
-	case <-time.After(2 * time.Second):
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+	return c.handshakeFn(ctx)
+}
+
+// defaultHandshake polls the guest agent ready endpoint until it reports ready.
+func (c *Client) defaultHandshake(ctx context.Context) error {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			status, err := c.apiGet(ctx, "/guest-agent/ready")
+			if err != nil {
+				continue
+			}
+			if status == http.StatusOK {
+				return nil
+			}
+		}
 	}
+}
+
+// defaultStart launches Firecracker using the jailer binary and waits for the socket.
+func (c *Client) defaultStart(ctx context.Context) error {
+	c.cmd = exec.CommandContext(
+		ctx,
+		c.jailerBin,
+		"--id", c.vmID,
+		"--exec-file", c.fcBin,
+		"--uid", "0",
+		"--gid", "0",
+		"--chroot-base-dir", "/tmp",
+		"--",
+		"--api-sock", c.socketPath,
+	)
+
+	if err := c.cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start Firecracker process: %w", err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- c.cmd.Wait() }()
+
+	for i := 0; i < 100; i++ {
+		if _, err := os.Stat(c.socketPath); err == nil {
+			return nil
+		}
+		select {
+		case err := <-done:
+			return fmt.Errorf("firecracker exited prematurely: %w", err)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("timed out waiting for Firecracker socket")
 }
 
 // CreateSnapshot creates a snapshot of the VM
 func (c *Client) CreateSnapshot(ctx context.Context, config SnapshotConfig) error {
 	snapshot := map[string]any{
-		"mem_file_path":     config.MemFilePath,
-		"snapshot_type":     "Full",
-		"snapshot_path":     config.VMStateFilePath,
-		"version":           "1.0.0",
+		"mem_file_path": config.MemFilePath,
+		"snapshot_type": "Full",
+		"snapshot_path": config.VMStateFilePath,
+		"version":       "1.0.0",
 	}
 
 	if err := c.apiPut(ctx, "/snapshot/create", snapshot); err != nil {
@@ -233,7 +293,7 @@ func (c *Client) getVMConfig(_ context.Context) ([]byte, error) {
 	// In a real implementation, this would get the VM configuration from the API
 	// For now, we'll just return a dummy configuration
 	config := map[string]any{
-		"version": "1.0.0",
+		"version":   "1.0.0",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 	return json.Marshal(config)
@@ -249,7 +309,7 @@ func (c *Client) apiPut(ctx context.Context, path string, data any) error {
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPut,
-		fmt.Sprintf("http://localhost%s", path),
+		fmt.Sprintf("%s%s", c.baseURL, path),
 		bytes.NewReader(jsonData),
 	)
 	if err != nil {
@@ -269,6 +329,21 @@ func (c *Client) apiPut(ctx context.Context, path string, data any) error {
 	}
 
 	return nil
+}
+
+// apiGet sends a GET request to the Firecracker API and returns the status code.
+func (c *Client) apiGet(ctx context.Context, path string) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s%s", c.baseURL, path), nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode, nil
 }
 
 // Cleanup cleans up resources used by the client
