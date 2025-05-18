@@ -74,8 +74,8 @@ $ git clone https://github.com/quinnovator/sporelet.git && cd sporelet
 $ pnpm install
 
 # 2. build a local golden snapshot (Layer 1)
-$ SNAP_DIR=dist \
-  pnpm turbo run snapshot:layer1 --filter=apps/snapshot-builder
+$ docker build -f apps/snapshot-builder/Dockerfile -t sporelet-builder .
+$ docker run --rm --privileged -v $PWD/dist:/snapshot sporelet-builder
 
 # 3. push to GitHub Container Registry (or any OCI registry)
 $ export OCI_REF=ghcr.io/quinnovator/sporelet/layer1:dev
