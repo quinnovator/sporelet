@@ -1,0 +1,7 @@
+apiVersion: sporelet.ai/v1alpha1
+kind: Sporelet
+metadata:
+  name: hello
+  namespace: default
+spec:
+  snapshot: ghcr.io/quinnovator/sporelet/layer1:dev

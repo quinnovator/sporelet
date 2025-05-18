@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sporelet-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sporelet-operator
+  namespace: sporelet-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sporelet-operator
+rules:
+  - apiGroups: ["sporelet.ai"]
+    resources: ["sporelets", "sporelets/status"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sporelet-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sporelet-operator
+subjects:
+  - kind: ServiceAccount
+    name: sporelet-operator
+    namespace: sporelet-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sporelet-operator
+  namespace: sporelet-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sporelet-operator
+  template:
+    metadata:
+      labels:
+        app: sporelet-operator
+    spec:
+      serviceAccountName: sporelet-operator
+      containers:
+        - name: operator
+          image: ghcr.io/quinnovator/sporelet/operator:latest
+          command: ["/operator"]
+          args: ["--metrics-bind-address=0.0.0.0:8080"]
+          imagePullPolicy: Always
