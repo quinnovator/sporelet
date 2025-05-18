@@ -84,7 +84,8 @@ $ oras push $OCI_REF \
     dist/layer1.mem dist/layer1.vmstate dist/layer1.config
 
 # 4. deploy to a dev cluster (K3s + KVM recommended)
-$ kubectl apply -f k8s/sporelet-operator.yaml   # coming soon
+$ kubectl apply -f k8s/sporelet-crd.yaml
+$ kubectl apply -f k8s/sporelet-operator.yaml
 $ kubectl apply -f examples/hello-sporelet.yaml  # points at your $OCI_REF
 ```
 
