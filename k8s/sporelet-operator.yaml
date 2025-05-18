@@ -52,4 +52,16 @@ spec:
           image: ghcr.io/quinnovator/sporelet/operator:latest
           command: ["/operator"]
           args: ["--metrics-bind-address=0.0.0.0:8080"]
+          env:
+            - name: SPORELET_WORKDIR
+              value: /var/lib/sporelet
+          ports:
+            - containerPort: 8080
+              name: metrics
           imagePullPolicy: Always
+          volumeMounts:
+            - name: sporelet-workdir
+              mountPath: /var/lib/sporelet
+      volumes:
+        - name: sporelet-workdir
+          emptyDir: {}
