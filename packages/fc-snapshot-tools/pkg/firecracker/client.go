@@ -369,14 +369,29 @@ func (c *Client) RestoreSnapshot(ctx context.Context, config RestoreConfig) erro
 }
 
 // getVMConfig gets the VM configuration
-func (c *Client) getVMConfig(_ context.Context) ([]byte, error) {
-	// In a real implementation, this would get the VM configuration from the API
-	// For now, we'll just return a dummy configuration
-	config := map[string]any{
-		"version":   "1.0.0",
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+func (c *Client) getVMConfig(ctx context.Context) ([]byte, error) {
+	var machine map[string]any
+	if err := c.apiGetJSON(ctx, "/machine-config", &machine); err != nil {
+		return nil, fmt.Errorf("get machine-config: %w", err)
 	}
-	return json.Marshal(config)
+
+	var boot map[string]any
+	if err := c.apiGetJSON(ctx, "/boot-source", &boot); err != nil {
+		return nil, fmt.Errorf("get boot-source: %w", err)
+	}
+
+	var rootfs map[string]any
+	if err := c.apiGetJSON(ctx, "/drives/rootfs", &rootfs); err != nil {
+		return nil, fmt.Errorf("get rootfs: %w", err)
+	}
+
+	cfg := map[string]any{
+		"machine-config": machine,
+		"boot-source":    boot,
+		"rootfs":         rootfs,
+	}
+
+	return json.Marshal(cfg)
 }
 
 // apiPut sends a PUT request to the Firecracker API
@@ -424,6 +439,26 @@ func (c *Client) apiGet(ctx context.Context, path string) (int, error) {
 	defer resp.Body.Close()
 	io.Copy(io.Discard, resp.Body)
 	return resp.StatusCode, nil
+}
+
+// apiGetJSON sends a GET request and decodes the JSON response into v.
+func (c *Client) apiGetJSON(ctx context.Context, path string, v any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s%s", c.baseURL, path), nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, body)
+	}
+
+	return json.NewDecoder(resp.Body).Decode(v)
 }
 
 // Cleanup cleans up resources used by the client
