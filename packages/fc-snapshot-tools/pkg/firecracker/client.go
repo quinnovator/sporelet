@@ -62,6 +62,13 @@ type SnapshotConfig struct {
 	ConfigFilePath  string
 }
 
+// RestoreConfig represents the configuration for restoring from a snapshot
+type RestoreConfig struct {
+	MemFilePath     string
+	VMStateFilePath string
+	ConfigFilePath  string
+}
+
 // NewClient creates a new Firecracker client
 // ClientOption configures optional settings for Client.
 type ClientOption func(*Client)
@@ -283,6 +290,25 @@ func (c *Client) CreateSnapshot(ctx context.Context, config SnapshotConfig) erro
 
 	if err := os.WriteFile(config.ConfigFilePath, vmConfig, 0644); err != nil {
 		return fmt.Errorf("failed to write VM config: %w", err)
+	}
+
+	return nil
+}
+
+// RestoreSnapshot loads a snapshot and resumes the VM
+func (c *Client) RestoreSnapshot(ctx context.Context, config RestoreConfig) error {
+	if err := c.startFirecracker(ctx); err != nil {
+		return fmt.Errorf("failed to start Firecracker: %w", err)
+	}
+
+	load := map[string]any{
+		"snapshot_path": config.VMStateFilePath,
+		"mem_file_path": config.MemFilePath,
+		"resume_vm":     true,
+	}
+
+	if err := c.apiPut(ctx, "/snapshot/load", load); err != nil {
+		return fmt.Errorf("failed to load snapshot: %w", err)
 	}
 
 	return nil

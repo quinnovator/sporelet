@@ -2,3 +2,4 @@ go 1.21
 
 use ./packages/fc-snapshot-tools
 use ./tests/e2e
+use ./cmd/spore-shim
