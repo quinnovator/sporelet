@@ -90,6 +90,18 @@ $ kubectl apply -f examples/hello-sporelet.yaml  # points at your $OCI_REF
 
 A _ready_ event should appear in under 50 ms in the operator logs. 🔥
 
+### Docker-based build
+
+A reproducible toolchain is provided via `infra/dev-vm.Dockerfile`.
+
+```bash
+$ docker build -f infra/dev-vm.Dockerfile -t sporelet-dev .
+$ docker run --rm -it --privileged -v $PWD:/workspace sporelet-dev
+```
+
+Run the snapshot commands from inside the container.
+
+
 ---
 
 ## 🔧 Turborepo tasks
