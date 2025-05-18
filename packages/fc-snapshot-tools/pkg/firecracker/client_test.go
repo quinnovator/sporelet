@@ -2,6 +2,7 @@ package firecracker
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,7 +15,7 @@ func TestClientWorkflow(t *testing.T) {
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
-		if r.URL.Path == "/guest-agent/ready" {
+		if r.URL.Path == "/ready" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -22,7 +23,19 @@ func TestClientWorkflow(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := NewClient("fc", "jailer", "testvm", "", WithHTTPClient(srv.Client()), WithBaseURL(srv.URL), WithStartFunc(func(context.Context) error { return nil }))
+	handshake := func(ctx context.Context) error {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/ready", nil)
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("status %d", resp.StatusCode)
+		}
+		return nil
+	}
+	c, err := NewClient("fc", "jailer", "testvm", "", WithHTTPClient(srv.Client()), WithBaseURL(srv.URL), WithStartFunc(func(context.Context) error { return nil }), WithHandshakeFunc(handshake))
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
@@ -54,7 +67,7 @@ func TestClientWorkflow(t *testing.T) {
 		t.Fatalf("CreateSnapshot: %v", err)
 	}
 
-	expected := []string{"/boot-source", "/drives/rootfs", "/machine-config", "/network-interfaces/eth0", "/actions", "/guest-agent/ready", "/snapshot/create"}
+	expected := []string{"/boot-source", "/drives/rootfs", "/machine-config", "/network-interfaces/eth0", "/actions", "/snapshot/create"}
 	for _, e := range expected {
 		found := false
 		for _, p := range paths {
@@ -74,7 +87,7 @@ func TestRestoreSnapshot(t *testing.T) {
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
-		if r.URL.Path == "/guest-agent/ready" {
+		if r.URL.Path == "/ready" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -82,7 +95,20 @@ func TestRestoreSnapshot(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := NewClient("fc", "jailer", "vm", "", WithHTTPClient(srv.Client()), WithBaseURL(srv.URL), WithStartFunc(func(context.Context) error { return nil }))
+	handshake := func(ctx context.Context) error {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/ready", nil)
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("status %d", resp.StatusCode)
+		}
+		return nil
+	}
+
+	c, err := NewClient("fc", "jailer", "vm", "", WithHTTPClient(srv.Client()), WithBaseURL(srv.URL), WithStartFunc(func(context.Context) error { return nil }), WithHandshakeFunc(handshake))
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
@@ -105,7 +131,7 @@ func TestRestoreSnapshot(t *testing.T) {
 		t.Fatalf("Handshake: %v", err)
 	}
 
-	expected := []string{"/snapshot/load", "/guest-agent/ready"}
+	expected := []string{"/snapshot/load"}
 	for _, e := range expected {
 		found := false
 		for _, p := range paths {

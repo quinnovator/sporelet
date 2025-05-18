@@ -22,6 +22,11 @@ if command -v compose-preheater >/dev/null 2>&1; then
   sudo chroot "$ROOTFS_DIR" compose-preheater || true
 fi
 
+# Install guest-agent if available
+if command -v guest-agent >/dev/null 2>&1; then
+  sudo cp "$(command -v guest-agent)" "$ROOTFS_DIR/usr/local/bin/"
+fi
+
 # Create ext4 image
 IMG_SIZE=${IMG_SIZE:-512} # in MB
 sudo dd if=/dev/zero of="$OUT" bs=1M count="$IMG_SIZE"

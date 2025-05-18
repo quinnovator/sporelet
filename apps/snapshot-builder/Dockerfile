@@ -16,6 +16,10 @@ RUN cd /src/fc-snapshot-tools && go build -o /usr/local/bin/fc-tools ./cmd/...
 COPY packages/compose-preheater /src/compose-preheater
 RUN cd /src/compose-preheater && go build -o /usr/local/bin/compose-preheater .
 
+# Build guest-agent
+COPY packages/guest-agent /src/guest-agent
+RUN cd /src/guest-agent && go build -o /usr/local/bin/guest-agent .
+
 # Install Firecracker binaries
 RUN curl -L https://github.com/firecracker-microvm/firecracker/releases/download/v${FC_VERSION}/firecracker-v${FC_VERSION}-x86_64.tgz \
     | tar -xz && \
