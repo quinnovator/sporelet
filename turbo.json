@@ -1,0 +1,21 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": [],
+      "outputs": []
+    },
+    "snapshot:layer0": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/layer0/**"]
+    },
+    "snapshot:layer1": {
+      "dependsOn": ["snapshot:layer0"],
+      "outputs": ["dist/layer1/**"]
+    },
+    "snapshot:push": {
+      "dependsOn": ["snapshot:layer1"],
+      "outputs": []
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "sporelet",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "snapshot:layer0": "turbo run snapshot:layer0",
+    "snapshot:layer1": "turbo run snapshot:layer1",
+    "snapshot:push": "turbo run snapshot:push",
+    "snapshot:ci": "turbo run snapshot:layer1 && turbo run snapshot:push"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.3"
+  },
+  "packageManager": "pnpm@9.12.0"
+}

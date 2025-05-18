@@ -1,0 +1,22 @@
+name: Golden Snapshot CI
+on:
+  push:
+    branches: [main]
+    paths: ["apps/**", "packages/**", "infra/**", "turbo.json", "package.json"]
+jobs:
+  build-snapshot:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9.12.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run snapshot:ci --filter="apps/snapshot-builder"
+        env:
+          OCI_REF: ghcr.io/${{ github.repository }}/layer1:${{ github.sha }}
+          SNAP_DIR: dist
+      - run: echo "Snapshot published to $OCI_REF"
