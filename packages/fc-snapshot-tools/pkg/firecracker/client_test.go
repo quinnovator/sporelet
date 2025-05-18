@@ -3,6 +3,7 @@ package firecracker
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,11 +16,21 @@ func TestClientWorkflow(t *testing.T) {
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
-		if r.URL.Path == "/ready" {
+		switch r.URL.Path {
+		case "/ready":
 			w.WriteHeader(http.StatusOK)
-			return
+		case "/machine-config":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"vcpu_count":1,"mem_size_mib":64}`)
+		case "/boot-source":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"kernel_image_path":"kernel","boot_args":"console=ttyS0"}`)
+		case "/drives/rootfs":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"path_on_host":"rootfs","is_root_device":true,"is_read_only":false}`)
+		default:
+			w.WriteHeader(http.StatusNoContent)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 
@@ -87,11 +98,21 @@ func TestRestoreSnapshot(t *testing.T) {
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
-		if r.URL.Path == "/ready" {
+		switch r.URL.Path {
+		case "/ready":
 			w.WriteHeader(http.StatusOK)
-			return
+		case "/machine-config":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"vcpu_count":1,"mem_size_mib":64}`)
+		case "/boot-source":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"kernel_image_path":"kernel","boot_args":"console=ttyS0"}`)
+		case "/drives/rootfs":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"path_on_host":"rootfs","is_root_device":true,"is_read_only":false}`)
+		default:
+			w.WriteHeader(http.StatusNoContent)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 
