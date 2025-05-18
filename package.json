@@ -10,7 +10,8 @@
     "snapshot:layer0": "turbo run snapshot:layer0",
     "snapshot:layer1": "turbo run snapshot:layer1",
     "snapshot:push": "turbo run snapshot:push",
-    "snapshot:ci": "turbo run snapshot:layer1 && turbo run snapshot:push"
+    "snapshot:ci": "turbo run snapshot:layer1 && turbo run snapshot:push",
+    "test": "go test ./packages/... ./tests/..."
   },
   "devDependencies": {
     "turbo": "^2.5.3"

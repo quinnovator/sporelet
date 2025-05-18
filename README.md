@@ -123,7 +123,7 @@ OIDC-based auth means **no Docker passwords** in secrets.
 $ pnpm turbo run build --watch
 
 # Run integration test (boots a microVM in CI mode)
-$ go test ./tests/e2e -v
+$ pnpm test
 ```
 
 ### Extending
