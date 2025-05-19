@@ -22,6 +22,21 @@ spec:
               properties:
                 phase:
                   type: string
+                snapshot:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
   scope: Namespaced
   names:
     plural: sporelets
