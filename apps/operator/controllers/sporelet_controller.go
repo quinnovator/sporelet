@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
@@ -13,7 +14,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+)
+
+var (
+	pullSnapshotFn = fcoci.PullSnapshot
+	execCommandCtx = exec.CommandContext
+	execCommand    = exec.Command
+	baseWorkDir    = "/var/lib/sporelet"
 )
 
 type SporeletReconciler struct {
@@ -26,14 +35,36 @@ func (r *SporeletReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	workDir := filepath.Join(baseWorkDir, req.Namespace, req.Name)
+	vmID := fmt.Sprintf("%s-%s", req.Namespace, req.Name)
+
+	if !sp.ObjectMeta.DeletionTimestamp.IsZero() {
+		execCommand("pkill", "-f", fmt.Sprintf("--id %s", vmID)).Run()
+		os.RemoveAll(workDir)
+		r.updateStatus(ctx, &sp, v1alpha1.PhaseStopped, metav1.Condition{})
+		if containsString(sp.Finalizers, v1alpha1.SporeletFinalizer) {
+			sp.Finalizers = removeString(sp.Finalizers, v1alpha1.SporeletFinalizer)
+			if err := r.Update(ctx, &sp); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if !containsString(sp.Finalizers, v1alpha1.SporeletFinalizer) {
+		sp.Finalizers = append(sp.Finalizers, v1alpha1.SporeletFinalizer)
+		if err := r.Update(ctx, &sp); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	if sp.Status.Phase == v1alpha1.PhaseReady && sp.Status.Snapshot == sp.Spec.Snapshot {
 		return ctrl.Result{}, nil
 	}
 
 	r.updateStatus(ctx, &sp, v1alpha1.PhasePending, metav1.Condition{})
 
-	workDir := filepath.Join("/var/lib/sporelet", req.Namespace, req.Name)
-	if err := fcoci.PullSnapshot(ctx, sp.Spec.Snapshot, workDir); err != nil {
+	if err := pullSnapshotFn(ctx, sp.Spec.Snapshot, workDir); err != nil {
 		cond := metav1.Condition{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PullFailed", Message: err.Error(), LastTransitionTime: metav1.Now()}
 		r.updateStatus(ctx, &sp, v1alpha1.PhaseError, cond)
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
@@ -41,7 +72,7 @@ func (r *SporeletReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	r.updateStatus(ctx, &sp, v1alpha1.PhaseRestoring, metav1.Condition{})
 
-	cmd := exec.CommandContext(ctx, "/spore-shim", "restore", workDir)
+	cmd := execCommandCtx(ctx, "/spore-shim", "restore", "--id", vmID, workDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		cond := metav1.Condition{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RestoreFailed", Message: fmt.Sprintf("%s: %v", string(output), err), LastTransitionTime: metav1.Now()}
@@ -64,7 +95,32 @@ func (r *SporeletReconciler) updateStatus(ctx context.Context, sp *v1alpha1.Spor
 }
 
 func (r *SporeletReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	pred := predicate.Or(predicate.GenerationChangedPredicate{}, predicate.Funcs{
+		DeleteFunc: func(e event.DeleteEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return !e.ObjectNew.GetDeletionTimestamp().IsZero()
+		},
+	})
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.Sporelet{}, ctrl.WithEventFilter(predicate.GenerationChangedPredicate{})).
+		For(&v1alpha1.Sporelet{}, ctrl.WithEventFilter(pred)).
 		Complete(r)
+}
+
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(slice []string, s string) []string {
+	var out []string
+	for _, v := range slice {
+		if v != s {
+			out = append(out, v)
+		}
+	}
+	return out
 }

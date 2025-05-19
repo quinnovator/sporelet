@@ -6,3 +6,4 @@ use ./cmd/spore-shim
 use ./packages/guest-agent
 use ./packages/compose-preheater
 use ./apps/snapshot-builder/hack
+use ./apps/operator
