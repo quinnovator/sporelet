@@ -54,7 +54,10 @@ const (
 	PhaseRestoring = "Restoring"
 	PhaseReady     = "Ready"
 	PhaseError     = "Error"
+	PhaseStopped   = "Stopped"
 )
+
+const SporeletFinalizer = "sporelet.ai/cleanup"
 
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(GroupVersion,
