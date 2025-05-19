@@ -12,6 +12,10 @@ import (
 	"github.com/quinnovator/sporelet/packages/fc-snapshot-tools/pkg/oci"
 )
 
+// allow tests to stub snapshot logic
+var startAndSnapshot = fc.StartAndSnapshot
+var compareSnapshotDirs = fc.CompareSnapshotDirs
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -26,6 +30,8 @@ func main() {
 		pushCmd(os.Args[2:])
 	case "pull":
 		pullCmd(os.Args[2:])
+	case "diff":
+		diffCmd(os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -38,6 +44,7 @@ func usage() {
 	fmt.Println("  snapshot    Create a Firecracker snapshot")
 	fmt.Println("  push        Push snapshot to OCI registry")
 	fmt.Println("  pull        Pull snapshot from OCI registry")
+	fmt.Println("  diff        Snapshot and compare against base layer")
 }
 
 func snapshotCmd(args []string) {
@@ -145,4 +152,73 @@ func pullCmd(args []string) {
 		fmt.Fprintf(os.Stderr, "pull failed: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func diffCmd(args []string) {
+	if err := runDiff(args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func runDiff(args []string) error {
+	fs := flag.NewFlagSet("diff", flag.ExitOnError)
+	var (
+		baseDir = fs.String("base-dir", "", "Directory of base snapshot")
+		kernel  = fs.String("kernel", "", "Path to kernel image")
+		rootfs  = fs.String("rootfs", "", "Path to rootfs image")
+		cmdline = fs.String("cmdline", "console=ttyS0 reboot=k panic=1 pci=off", "Kernel command line")
+		outDir  = fs.String("out-dir", ".", "Output directory")
+		prefix  = fs.String("snapshot-prefix", "snapshot", "Snapshot file prefix")
+		memMB   = fs.Int("mem", 1024, "Memory size (MB)")
+		vcpus   = fs.Int("vcpu", 1, "Number of vCPUs")
+	)
+	fs.Parse(args)
+
+	if *baseDir == "" || *kernel == "" || *rootfs == "" {
+		fs.Usage()
+		return fmt.Errorf("base-dir, kernel and rootfs are required")
+	}
+
+	spec := fc.SnapshotSpec{
+		Kernel:    *kernel,
+		Rootfs:    *rootfs,
+		Cmdline:   *cmdline,
+		MemSizeMB: *memMB,
+		VCPUCount: *vcpus,
+	}
+
+	if err := os.MkdirAll(*outDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output dir: %w", err)
+	}
+
+	ctx := context.Background()
+	if err := startAndSnapshot(ctx, spec, *outDir); err != nil {
+		return fmt.Errorf("snapshot failed: %w", err)
+	}
+
+	if *prefix != "snapshot" {
+		files := []string{"snapshot.mem", "snapshot.vmstate", "snapshot.config"}
+		for _, f := range files {
+			old := filepath.Join(*outDir, f)
+			new := filepath.Join(*outDir, strings.Replace(f, "snapshot", *prefix, 1))
+			os.Rename(old, new)
+		}
+	}
+
+	changes, err := compareSnapshotDirs(*baseDir, *outDir, *prefix)
+	if err != nil {
+		return fmt.Errorf("diff failed: %w", err)
+	}
+
+	if len(changes) == 0 {
+		fmt.Println("no layer changes detected")
+		return nil
+	}
+	fmt.Println("changed files:")
+	for _, c := range changes {
+		fmt.Printf("  %s\n", c)
+	}
+
+	return nil
 }
