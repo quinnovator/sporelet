@@ -73,6 +73,9 @@ Snapshots live in a **node-local reflink cache**; KSM deduplicates identical pag
 $ git clone https://github.com/quinnovator/sporelet.git && cd sporelet
 $ pnpm install
 
+# 1a. create the `tap0` interface used by snapshot builds
+$ ./apps/snapshot-builder/hack/setup-tap0.sh   # sets up 172.16.0.1/24
+
 # 2. build a local golden snapshot (Layer 1)
 $ docker build -f apps/snapshot-builder/Dockerfile -t sporelet-builder .
 $ docker run --rm --privileged -v $PWD/dist:/snapshot sporelet-builder

@@ -23,6 +23,11 @@ done
 
 CMDLINE="console=ttyS0 reboot=k panic=1 pci=off"
 
+# Ensure tap0 exists for the VM networking
+if ! ip link show tap0 &>/dev/null; then
+  "$(dirname "$0")/setup-tap0.sh"
+fi
+
 # Launch the VM, run compose-preheater inside via SSH, then snapshot
 go run "$(dirname "$0")/run_and_snapshot.go" \
   --kernel "$KERNEL" \
