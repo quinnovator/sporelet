@@ -78,6 +78,17 @@ fc-tools snapshot \
   --snapshot-prefix layer1
 ```
 
+### Diffing snapshots
+
+```bash
+fc-tools diff \
+  --base-dir /path/to/layer1 \
+  --kernel /path/to/vmlinux \
+  --rootfs /path/to/rootfs.ext4 \
+  --out-dir /path/to/output \
+  --snapshot-prefix layer2
+```
+
 ### Pushing a snapshot to an OCI registry
 
 ```bash

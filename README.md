@@ -102,6 +102,27 @@ $ docker run --rm -it --privileged -v $PWD:/workspace sporelet-dev
 
 Run the snapshot commands from inside the container.
 
+### spore-shim CLI
+
+`spore-shim` now supports creating and diffing snapshots.
+
+```bash
+# Create a snapshot
+spore-shim snapshot \
+  --kernel /path/to/vmlinux \
+  --rootfs /path/to/rootfs.ext4 \
+  --out-dir dist \
+  --snapshot-prefix layer1
+
+# Create a diff layer against an existing snapshot
+spore-shim diff \
+  --base-dir dist/layer1 \
+  --kernel /path/to/vmlinux \
+  --rootfs /path/to/rootfs.ext4 \
+  --out-dir dist/layer2 \
+  --snapshot-prefix layer2
+```
+
 
 ---
 
