@@ -24,4 +24,12 @@ sporectl push \
 sporectl pull \
   --oci-ref ghcr.io/your/repo/layer1:latest \
   --out-dir dist
+
+# create a diff layer against an existing snapshot
+sporectl diff \
+  --base-dir dist/layer1 \
+  --kernel /path/to/vmlinux \
+  --rootfs /path/to/rootfs.ext4 \
+  --out-dir dist/layer2 \
+  --snapshot-prefix layer2
 ```
