@@ -21,14 +21,12 @@ done
 
 [[ -z $KERNEL || -z $ROOTFS || -z $SNAP_PREFIX ]] && usage
 
-OUT_DIR=$(dirname "$SNAP_PREFIX")
-BASENAME=$(basename "$SNAP_PREFIX")
+CMDLINE="console=ttyS0 reboot=k panic=1 pci=off"
 
-CMDLINE="console=ttyS0 reboot=k panic=1 pci=off init=/usr/local/bin/compose-preheater"
-
-fc-tools snapshot \
+# Launch the VM, run compose-preheater inside via SSH, then snapshot
+go run "$(dirname "$0")/run_and_snapshot.go" \
   --kernel "$KERNEL" \
   --rootfs "$ROOTFS" \
   --cmdline "$CMDLINE" \
-  --snapshot-prefix "$BASENAME" \
-  --out-dir "$OUT_DIR"
+  --snapshot-prefix "$SNAP_PREFIX"
+

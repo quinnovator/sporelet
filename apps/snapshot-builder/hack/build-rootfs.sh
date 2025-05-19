@@ -19,7 +19,6 @@ sudo chroot "$ROOTFS_DIR" apt-get install -y containerd docker.io docker-compose
 # Install compose-preheater if available
 if command -v compose-preheater >/dev/null 2>&1; then
   sudo cp "$(command -v compose-preheater)" "$ROOTFS_DIR/usr/local/bin/"
-  sudo chroot "$ROOTFS_DIR" compose-preheater || true
 fi
 
 # Install guest-agent if available
