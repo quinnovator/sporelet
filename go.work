@@ -4,3 +4,5 @@ use ./packages/fc-snapshot-tools
 use ./tests/e2e
 use ./cmd/spore-shim
 use ./packages/guest-agent
+use ./packages/compose-preheater
+use ./apps/snapshot-builder/hack
