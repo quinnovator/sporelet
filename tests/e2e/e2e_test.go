@@ -34,8 +34,8 @@ func TestSnapshotBuild(t *testing.T) {
 	}
 }
 
-// TestBootMicroVMFromSnapshot attempts to boot the microVM from the built snapshot.
-// TODO: implement once a restore utility is available.
+// TestBootMicroVMFromSnapshot attempts to boot the microVM from the built snapshot
+// and verifies the guest agent handshake succeeds.
 func TestBootMicroVMFromSnapshot(t *testing.T) {
 	if _, err := exec.LookPath("firecracker"); err != nil {
 		t.Skip("firecracker binary not available")
@@ -61,13 +61,12 @@ func TestBootMicroVMFromSnapshot(t *testing.T) {
 	}
 
 	client, err := fcclient.NewClient("", "", vmID, socket,
-		fcclient.WithStartFunc(func(context.Context) error { return nil }),
-		fcclient.WithHandshakeFunc(func(context.Context) error { return nil }))
+		fcclient.WithStartFunc(func(context.Context) error { return nil }))
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := client.WaitForVSockHandshake(ctx); err != nil {
 		t.Fatalf("handshake failed: %v", err)
