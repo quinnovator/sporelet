@@ -4,7 +4,9 @@ package fc
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -177,4 +179,49 @@ func Restore(ctx context.Context, s RestoreSpec) error {
 	}
 
 	return nil
+}
+
+// CompareSnapshotDirs compares snapshot files in baseDir and newDir using the
+// provided snapshot prefix. It returns a slice of file names that differ.
+func CompareSnapshotDirs(baseDir, newDir, prefix string) ([]string, error) {
+	files := []string{
+		fmt.Sprintf("%s.mem", prefix),
+		fmt.Sprintf("%s.vmstate", prefix),
+		fmt.Sprintf("%s.config", prefix),
+	}
+
+	var changed []string
+	for _, f := range files {
+		basePath := filepath.Join(baseDir, f)
+		newPath := filepath.Join(newDir, f)
+
+		bHash, err := fileHash(basePath)
+		if err != nil {
+			return nil, err
+		}
+		nHash, err := fileHash(newPath)
+		if err != nil {
+			return nil, err
+		}
+
+		if bHash != nHash {
+			changed = append(changed, f)
+		}
+	}
+
+	return changed, nil
+}
+
+func fileHash(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
