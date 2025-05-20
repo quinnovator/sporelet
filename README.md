@@ -1,5 +1,7 @@
 # sporelet
 
+**NOTE: THIS PROJECT IS UNDER CONSTRUCTION AND NOT YET COMPLETE**
+
 > **Production-ready micro-VMs for AI powered workflows that start in <50ms.**
 
 Sporelet is a Kubernetes-native runtime that snapshots fully-formed _microVMs_ (powered by Firecracker or Cloud Hypervisor) so they can spring to life on demand—perfect for AI agents, bursty serverless tasks, or any workload that should feel _instant_ yet remain strongly isolated.
@@ -174,18 +176,6 @@ $ pnpm test
 ## 🛤 Roadmap
 
 TBD.
-
-## 🤝 Contributing
-
-PRs welcome! Check out `CONTRIBUTING.md` for branch naming, DCO sign-offs, and our lightweight RFC process.
-
-### Maintainers
-
-| GitHub       | Role              |
-| ------------ | ----------------- |
-| @quinnovator | Lead architect    |
-| @quinnovator | Snapshot pipeline |
-| @quinnovator | Operator & CRD    |
 
 ---
 
